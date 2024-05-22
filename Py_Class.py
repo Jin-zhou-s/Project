@@ -1,6 +1,9 @@
 import os.path
 import urllib.request
 import zipfile
+import json
+import numpy as np
+from PIL import Image
 
 
 # The download callback function displays the download progress
@@ -50,3 +53,31 @@ class Data_process:
                 folders.append(item)
         print(folders)
         return folders
+
+    def read_json(self, path):
+        json_path = os.path.join(self.image_save_path, path)
+        with open(json_path, 'r') as file:
+            data = json.load(file)
+        images = data['frames']
+        camera_angle_x = data['camera_angle_x']
+        file_paths = []
+        rotation = []
+        transform_matrix = []
+
+        for img in images:
+            transform = np.array(img['transform_matrix'], dtype=np.float32)
+            transform_matrix.append(transform)
+            rotation.append(img['rotation'])
+            file_paths.append(img['file_path'])
+
+        return camera_angle_x, file_paths, rotation, transform_matrix
+
+    def open_image(self, directory_path, image_path):
+        imag = os.path.join(self.image_save_path, directory_path)
+        cleaned_path = image_path.replace('./', '', 1)
+        path = os.path.join(imag, cleaned_path + ".png")
+        try:
+            image = Image.open(path)
+            image.show()
+        except Exception as e:
+            print(f"Error opening image: {e}")
