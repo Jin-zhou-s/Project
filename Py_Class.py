@@ -36,3 +36,17 @@ class Data_process:
             os.remove(full_save_path)
         else:
             print("The dataset file is detected and the download is skipped")
+
+    def read_directory(self, path=None):
+        if not path:
+            search_path = self.image_save_path
+        else:
+            search_path = os.path.join(self.image_save_path, path)
+
+        items = os.listdir(search_path)
+        folders = []
+        for item in items:
+            if os.path.isdir(os.path.join(search_path, item)):
+                folders.append(item)
+        print(folders)
+        return folders
