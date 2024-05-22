@@ -20,6 +20,7 @@ class Data_process:
         self.image_save_path = "Image_data/Image_dataset"
         self.zip_path = "nerf_synthetic"
 
+    # Download the decompression function
     def download_and_unzipped_file(self):
         if not os.path.isdir(self.save_path):
             os.makedirs(self.save_path)
