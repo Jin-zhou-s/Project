@@ -81,3 +81,17 @@ class Data_process:
             image.show()
         except Exception as e:
             print(f"Error opening image: {e}")
+
+
+class Camera_calibration:
+    def __init__(self):
+        self.chessboard_size = (9, 6)
+        self.square_size = 1.0
+        self.obj_points = []
+        self.img_points = []
+        self.camera_matrix = None
+        self.dist_coffs = None
+
+        self.objp = np.zeros((np.prod(self.chessboard_size), 3), np.float32)
+        self.objp[:, :2] = np.indices(self.chessboard_size).T.reshape(-1, 2)
+        self.objp *= self.square_size
