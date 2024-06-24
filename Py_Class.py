@@ -3,6 +3,9 @@ import urllib.request
 import zipfile
 import json
 import numpy as np
+import cv2
+import glob
+import pandas as pd
 from PIL import Image
 
 
@@ -54,8 +57,8 @@ class Data_process:
         print(folders)
         return folders
 
-    def read_json(self, path):
-        json_path = os.path.join(self.image_save_path, path)
+    def read_json(self, path, file_name):
+        json_path = os.path.join(self.image_save_path, path, file_name)
         with open(json_path, 'r') as file:
             data = json.load(file)
         images = data['frames']
@@ -68,30 +71,80 @@ class Data_process:
             transform = np.array(img['transform_matrix'], dtype=np.float32)
             transform_matrix.append(transform)
             rotation.append(img['rotation'])
-            file_paths.append(img['file_path'])
+            clean_path = img['file_path'].replace('./', '', 1)
+            join_path = os.path.join(self.image_save_path, path, clean_path + ".png")
+            image_path = join_path.replace('\\', '/')
+            file_paths.append(image_path)
 
-        return camera_angle_x, file_paths, rotation, transform_matrix
+        df_image = pd.DataFrame({
+            'Image_path': file_paths,
+            'Image_rotation': rotation,
+            'Image_transform': transform_matrix
+        })
 
-    def open_image(self, directory_path, image_path):
-        imag = os.path.join(self.image_save_path, directory_path)
-        cleaned_path = image_path.replace('./', '', 1)
-        path = os.path.join(imag, cleaned_path + ".png")
-        try:
-            image = Image.open(path)
-            image.show()
-        except Exception as e:
-            print(f"Error opening image: {e}")
+        return camera_angle_x, df_image
 
 
 class Camera_calibration:
     def __init__(self):
-        self.chessboard_size = (9, 6)
-        self.square_size = 1.0
+        self.chessboard_size = (11, 8)
+        self.square_size = 70
         self.obj_points = []
         self.img_points = []
         self.camera_matrix = None
-        self.dist_coffs = None
+        self.dist_coeffs = None
 
         self.objp = np.zeros((np.prod(self.chessboard_size), 3), np.float32)
         self.objp[:, :2] = np.indices(self.chessboard_size).T.reshape(-1, 2)
         self.objp *= self.square_size
+
+    def draw_chessboard(self, image_path):
+        # 获取图像尺寸
+        image = cv2.imread(image_path)
+        img_height, img_width = image.shape[:2]
+
+        # 计算棋盘格的总尺寸
+        board_width = self.chessboard_size[0] * self.square_size
+        board_height = self.chessboard_size[1] * self.square_size
+
+        # 确定棋盘格的左上角位置，使其居中显示
+        start_x = (img_width - board_width) // 2
+        start_y = (img_height - board_height) // 2
+        # 创建棋盘格图案
+        # 创建棋盘格图案
+        chessboard = np.zeros_like(image)
+
+        for i in range(self.chessboard_size[1]):
+            for j in range(self.chessboard_size[0]):
+                # 计算每个方格的顶点坐标
+                top_left = (start_x + j * self.square_size, start_y + i * self.square_size)
+                bottom_right = (start_x + (j + 1) * self.square_size, start_y + (i + 1) * self.square_size)
+                # 绘制白色方格
+                if (i + j) % 2 == 0:
+                    cv2.rectangle(chessboard, top_left, bottom_right, (255, 255, 255), -1)
+
+        # 将棋盘格图案叠加到原始图像上
+        combined = cv2.addWeighted(image, 0.5, chessboard, 0.9, 0)
+        return combined
+
+    def add_image_calibration(self, image_path):
+        image = self.draw_chessboard(image_path)
+        if image is None:
+            print(f"Failed to load image at {image_path}")
+            return
+        print(f"Loaded image at {image_path} with shape {image.shape}")
+        image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        ret, corners = cv2.findChessboardCorners(image_gray, (8, 11), None)
+        print(ret)
+        if ret:
+            self.obj_points.append(self.objp.copy())
+            criteria = (cv2.TermCriteria_EPS + cv2.TermCriteria_MAX_ITER, 30, 0.001)
+            corners2 = cv2.cornerSubPix(image_gray, corners, (11, 11), (-1, -1), criteria)
+            self.img_points.append(corners2)
+            img = cv2.drawChessboardCorners(image, self.chessboard_size, corners2, ret)
+            cv2.imshow('Chessboard', img)
+            cv2.waitKey(500)
+            cv2.destroyAllWindows()
+        else:
+            print(f"Chessboard corners not found in {image_path}")
+
