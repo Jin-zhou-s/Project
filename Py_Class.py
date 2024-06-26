@@ -6,6 +6,9 @@ import numpy as np
 import cv2
 import glob
 import pandas as pd
+import torch
+import torch.nn as nn
+from tqdm import tqdm
 from PIL import Image
 
 
@@ -148,3 +151,74 @@ class Camera_calibration:
         else:
             print(f"Chessboard corners not found in {image_path}")
 
+
+# Nerf model
+class NeRFModel(nn.Module):
+    # The layer that defines the model
+    def __init__(self):
+        super(NeRFModel, self).__init__()
+        self.layer1 = nn.Linear(3, 256)
+        self.layer2 = nn.Linear(256, 256)
+        self.output_layer = nn.Linear(256, 3)
+
+    def forward(self, x):
+        x = torch.relu(self.layer1(x))
+        x = torch.relu(self.layer2(x))
+        x = self.output_layer(x)
+        return x
+
+    # Load image data, pose matrix
+
+
+def load_data(dataset):
+    image_data = []
+    poses_data = []
+    for index, row in dataset.iterrows():
+        file_path = row['Image_path']
+        image_poses = row['Image_transform']
+        # The image is read and converted to RGB format
+        image = cv2.imread(file_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0
+        image_data.append(image)
+        poses_data.append(image_poses)
+    return np.array(image_data), np.array(poses_data)
+
+
+# 生成射线的函数
+
+
+def get_rays(H, W, focal, pose):
+    # 生成图像平面的像素网格
+    i, j = torch.meshgrid(torch.linspace(0, W - 1, W, dtype=torch.float32),
+                          torch.linspace(0, H - 1, H, dtype=torch.float32), indexing='ij')
+    i = i.t().reshape(-1)
+    j = j.t().reshape(-1)
+    # 计算射线方向
+    dirs = torch.stack([(i - W * 0.5) / focal, -(j - H * 0.5) / focal, -torch.ones_like(i)], -1)
+    rays_d = torch.sum(dirs[..., np.newaxis, :] * pose[:3, :3], -1)
+    # 射线起点
+    rays_o = pose[:3, -1].expand(rays_d.shape)
+    return rays_o, rays_d
+
+
+def train_nerf(images, poses, model, optimizer, num_epochs=100):
+    H, W, focal = 800, 800, 800  # 假设图像的高度、宽度和焦距
+    scaler = torch.cuda.amp.GradScaler()  # 混合精度训练
+
+    for epoch in tqdm(range(num_epochs)):
+        for i in range(len(images)):
+            # 将图像和相机位姿转换为张量
+            img = torch.tensor(images[i], dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
+            pose = torch.tensor(poses[i], dtype=torch.float32)
+            # 生成射线
+            rays_o, rays_d = get_rays(H, W, focal, pose)
+            target_rgb = img.permute(0, 2, 3, 1).reshape(-1, 3)
+            optimizer.zero_grad()
+            with torch.cuda.amp.autocast():  # 自动混合精度
+                rgb_pred = model(rays_o)
+                # 计算预测的RGB颜色值与真实值之间的损失
+                loss = ((rgb_pred - target_rgb) ** 2).mean()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        print(f"Epoch {epoch}, Loss: {loss.item()}")
