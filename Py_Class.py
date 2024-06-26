@@ -8,6 +8,7 @@ import glob
 import pandas as pd
 import torch
 import torch.nn as nn
+import torch.cuda.amp as amp
 from tqdm import tqdm
 from PIL import Image
 
@@ -199,26 +200,47 @@ def get_rays(H, W, focal, pose):
     # 射线起点
     rays_o = pose[:3, -1].expand(rays_d.shape)
     return rays_o, rays_d
+def calculate_accuracy(predictions, targets):
+    # 定义一种简单的准确度衡量方式：预测值和真实值之间的绝对误差小于一定阈值的比例
+    threshold = 0.1
+    correct = torch.abs(predictions - targets) < threshold
+    accuracy = correct.float().mean().item()
+    return accuracy
 
+def train_nerf(images, poses, model, optimizer, num_epochs=10):
+    H, W, focal = 800, 800, 800
+    scaler = amp.GradScaler()
 
-def train_nerf(images, poses, model, optimizer, num_epochs=100):
-    H, W, focal = 800, 800, 800  # 假设图像的高度、宽度和焦距
-    scaler = torch.cuda.amp.GradScaler()  # 混合精度训练
+    for epoch in range(1, num_epochs + 1):  # 从 1 开始迭代
+        with tqdm(total=len(images), desc=f"Epoch {epoch}/{num_epochs}", unit="image") as pbar:
+            epoch_loss = 0
+            epoch_accuracy = 0
+            for i in range(len(images)):
+                img = torch.tensor(images[i], dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
+                pose = torch.tensor(poses[i], dtype=torch.float32)
+                rays_o, rays_d = get_rays(H, W, focal, pose)
+                target_rgb = img.permute(0, 2, 3, 1).reshape(-1, 3)
+                optimizer.zero_grad()
+                with amp.autocast():  # 自动混合精度
+                    rgb_pred = model(rays_o)
+                    loss = ((rgb_pred - target_rgb) ** 2).mean()
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
 
-    for epoch in tqdm(range(num_epochs)):
-        for i in range(len(images)):
-            # 将图像和相机位姿转换为张量
-            img = torch.tensor(images[i], dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
-            pose = torch.tensor(poses[i], dtype=torch.float32)
-            # 生成射线
-            rays_o, rays_d = get_rays(H, W, focal, pose)
-            target_rgb = img.permute(0, 2, 3, 1).reshape(-1, 3)
-            optimizer.zero_grad()
-            with torch.cuda.amp.autocast():  # 自动混合精度
-                rgb_pred = model(rays_o)
-                # 计算预测的RGB颜色值与真实值之间的损失
-                loss = ((rgb_pred - target_rgb) ** 2).mean()
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-        print(f"Epoch {epoch}, Loss: {loss.item()}")
+                # 计算准确度
+                accuracy = calculate_accuracy(rgb_pred, target_rgb)
+
+                # 更新进度条
+                pbar.update(1)
+                pbar.set_postfix({"loss": loss.item(), "accuracy": accuracy})
+
+                # 累加每个batch的损失和准确度
+                epoch_loss += loss.item()
+                epoch_accuracy += accuracy
+
+                # 计算平均损失和准确度
+            avg_loss = epoch_loss / len(images)
+            avg_accuracy = epoch_accuracy / len(images)
+
+        print(f"Epoch {epoch}, Loss: {avg_loss}, Accuracy: {avg_accuracy}")

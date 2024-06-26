@@ -15,7 +15,7 @@ def main():
     camera_angle_x, df_image = data_process.read_json(path, "transforms_train.json")
     print(camera_angle_x)
     image_array, poses_array = load_data(df_image)
-    model = NeRFModel().cuda()
+    model = NeRFModel()
     optimizer = optim.Adam(model.parameters(), lr=5e-4)
     train_nerf(image_array, poses_array, model, optimizer, num_epochs=10)
 
