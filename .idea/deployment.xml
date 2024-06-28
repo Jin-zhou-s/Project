@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="root@92.238.213.221:60409 key" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="ec2-user@51.20.128.133:22 key">
         <serverdata>
@@ -42,6 +42,34 @@
         <serverdata>
           <mappings>
             <mapping deploy="/tmp/pycharm_project_54" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@106.246.35.133:46576 key">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_165" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@46.188.73.96:41008 key">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_697" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@92.238.213.221:60409 key">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_954" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="user@206.168.80.147:22 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_357" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>

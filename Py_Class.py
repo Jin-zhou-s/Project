@@ -160,11 +160,31 @@ class NeRFModel(nn.Module):
         super(NeRFModel, self).__init__()
         self.layer1 = nn.Linear(3, 256)
         self.layer2 = nn.Linear(256, 256)
+        self.layer3 = nn.Linear(256, 256)
+        self.layer4 = nn.Linear(256, 256)
+        self.layer5 = nn.Linear(256, 256)
+        self.layer6 = nn.Linear(256, 256)
+        self.layer7 = nn.Linear(256, 256)
+        self.layer8 = nn.Linear(256, 256)
+        # self.layer9 = nn.Linear(256, 256)
+        # self.layer10 = nn.Linear(256, 256)
+        # self.layer11 = nn.Linear(256, 256)
+        # self.layer12 = nn.Linear(256, 256)
         self.output_layer = nn.Linear(256, 3)
 
     def forward(self, x):
         x = torch.relu(self.layer1(x))
         x = torch.relu(self.layer2(x))
+        x = torch.relu(self.layer3(x))
+        x = torch.relu(self.layer4(x))
+        x = torch.relu(self.layer5(x))
+        x = torch.relu(self.layer6(x))
+        x = torch.relu(self.layer7(x))
+        x = torch.relu(self.layer8(x))
+        # x = torch.relu(self.layer9(x))
+        # x = torch.relu(self.layer10(x))
+        # x = torch.relu(self.layer11(x))
+        # x = torch.relu(self.layer12(x))
         x = self.output_layer(x)
         return x
 
@@ -189,17 +209,20 @@ def load_data(dataset):
 
 
 def get_rays(H, W, focal, pose):
+    device = pose.device  # 确保所有张量都在同一个设备上
     # 生成图像平面的像素网格
-    i, j = torch.meshgrid(torch.linspace(0, W - 1, W, dtype=torch.float32),
-                          torch.linspace(0, H - 1, H, dtype=torch.float32), indexing='ij')
+    i, j = torch.meshgrid(torch.linspace(0, W - 1, W, dtype=torch.float32, device=device),
+                          torch.linspace(0, H - 1, H, dtype=torch.float32, device=device), indexing='ij')
     i = i.t().reshape(-1)
     j = j.t().reshape(-1)
     # 计算射线方向
-    dirs = torch.stack([(i - W * 0.5) / focal, -(j - H * 0.5) / focal, -torch.ones_like(i)], -1)
+    dirs = torch.stack([(i - W * 0.5) / focal, -(j - H * 0.5) / focal, -torch.ones_like(i, device=device)], -1)
     rays_d = torch.sum(dirs[..., np.newaxis, :] * pose[:3, :3], -1)
     # 射线起点
     rays_o = pose[:3, -1].expand(rays_d.shape)
     return rays_o, rays_d
+
+
 def calculate_accuracy(predictions, targets):
     # 定义一种简单的准确度衡量方式：预测值和真实值之间的绝对误差小于一定阈值的比例
     threshold = 0.1
@@ -207,19 +230,25 @@ def calculate_accuracy(predictions, targets):
     accuracy = correct.float().mean().item()
     return accuracy
 
-def train_nerf(images, poses, model, optimizer, num_epochs=10):
+
+def train_nerf(images, poses, model, optimizer, num_epochs=1000, check_interval=1000):
     H, W, focal = 800, 800, 800
     scaler = amp.GradScaler()
 
+    # 确定设备
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
+
     for epoch in range(1, num_epochs + 1):  # 从 1 开始迭代
-        with tqdm(total=len(images), desc=f"Epoch {epoch}/{num_epochs}", unit="image") as pbar:
+        with tqdm(total=len(images), desc=f"Epoch {epoch}/{num_epochs}", unit="image", leave=False) as pbar:
             epoch_loss = 0
             epoch_accuracy = 0
             for i in range(len(images)):
-                img = torch.tensor(images[i], dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
-                pose = torch.tensor(poses[i], dtype=torch.float32)
+                img = torch.tensor(images[i], dtype=torch.float32).permute(2, 0, 1).unsqueeze(0).to(device)
+                pose = torch.tensor(poses[i], dtype=torch.float32).to(device)
                 rays_o, rays_d = get_rays(H, W, focal, pose)
-                target_rgb = img.permute(0, 2, 3, 1).reshape(-1, 3)
+                rays_o, rays_d = rays_o.to(device), rays_d.to(device)
+                target_rgb = img.permute(0, 2, 3, 1).reshape(-1, 3).to(device)
                 optimizer.zero_grad()
                 with amp.autocast():  # 自动混合精度
                     rgb_pred = model(rays_o)
@@ -239,8 +268,41 @@ def train_nerf(images, poses, model, optimizer, num_epochs=10):
                 epoch_loss += loss.item()
                 epoch_accuracy += accuracy
 
-                # 计算平均损失和准确度
+            # 计算平均损失和准确度
             avg_loss = epoch_loss / len(images)
             avg_accuracy = epoch_accuracy / len(images)
 
-        print(f"Epoch {epoch}, Loss: {avg_loss}, Accuracy: {avg_accuracy}")
+        tqdm.write(f"Epoch {epoch}, Loss: {avg_loss}, Accuracy: {avg_accuracy}", end='')
+        if epoch % check_interval == 0:
+            pose = torch.tensor(poses[0], dtype=torch.float32).to(device)
+            image = generate_image(model, pose)
+            save_image(image, f"output_epoch_{epoch}.png")
+            print(f"Intermediate image saved for epoch {epoch}")
+
+
+def save_model(model, path='nerf_model.pth'):
+    torch.save(model.state_dict(), path)
+
+
+def load_model(model, path='nerf_model.pth'):
+    model.load_state_dict(torch.load(path))
+    model.eval()
+    return model
+
+
+def generate_image(model, pose, H=800, W=800, focal=800):
+    model.eval()
+    device = next(model.parameters()).device
+    with torch.no_grad():
+        rays_o, rays_d = get_rays(H, W, focal, pose)
+        rays_o, rays_d = rays_o.to(device), rays_d.to(device)
+        rgb_pred = model(rays_o)
+        rgb_pred = rgb_pred.reshape(H, W, 3)
+        return rgb_pred.cpu().numpy()
+
+
+def save_image(image, path):
+    # 直接保存为32位浮点数图像
+    image = (image * 255).astype(np.float32)  # 将图像从 [0, 1] 范围的浮点数转换为 [0, 255] 范围的浮点数
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)  # 转换为 BGR 格式
+    cv2.imwrite(path, image)

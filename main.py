@@ -1,7 +1,10 @@
 import os.path
+import matplotlib.pyplot as plt
+import torch
 import torch.optim as optim
 
-from Py_Class import Data_process, Camera_calibration, NeRFModel, train_nerf, load_data
+from Py_Class import Data_process, Camera_calibration, NeRFModel, train_nerf, load_data, save_model, load_model, \
+    generate_image, save_image
 
 
 def main():
@@ -15,9 +18,23 @@ def main():
     camera_angle_x, df_image = data_process.read_json(path, "transforms_train.json")
     print(camera_angle_x)
     image_array, poses_array = load_data(df_image)
+
+    # plt.imshow(image_array[0])
+    # plt.title('Loaded Image with PIL')
+    # plt.axis('off')
+    # plt.show()
+    model = NeRFModel().cuda()
+    optimizer = optim.Adam(model.parameters(), lr=5e-5)
+    train_nerf(image_array, poses_array, model, optimizer, num_epochs=10000, check_interval=1000)
+    save_model(model)
     model = NeRFModel()
-    optimizer = optim.Adam(model.parameters(), lr=5e-4)
-    train_nerf(image_array, poses_array, model, optimizer, num_epochs=10)
+    model = load_model(model)
+
+    # Use the model to generate a picture
+    pose = torch.tensor(poses_array[0], dtype=torch.float32).to(next(model.parameters()).device)  # Use the first camera pose
+    image = generate_image(model, pose)
+    save_image(image, "output.png")
+    print("Image saved to output.png")
 
 
 if __name__ == '__main__':
